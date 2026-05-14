@@ -61,6 +61,7 @@ import matplotlib.patheffects as mpe
 from matplotlib.gridspec import GridSpec
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
+from matplotlib.path import Path as MplPath
 
 from scipy.interpolate import griddata
 from scipy.ndimage import map_coordinates
@@ -575,9 +576,41 @@ def _add_noise_contours(ax, xx, yy, noise_grid, levels, alpha_fill=0.55):
     return cf
 
 
+def _make_wtg_marker():
+    """3-bladed rotor plan-view marker — tapered blades + hub circle."""
+    def _blade(angle_deg):
+        a = np.radians(angle_deg)
+        c, s = np.cos(a), np.sin(a)
+        pts = np.array([
+            [ 0.00,  0.00],
+            [-0.10,  0.18],
+            [-0.05,  1.00],
+            [ 0.05,  1.00],
+            [ 0.10,  0.18],
+            [ 0.00,  0.00],
+        ])
+        rot = np.array([[c, -s], [s, c]])
+        return (pts @ rot.T).tolist()
+
+    verts, codes = [], []
+    for angle in [90, 210, 330]:
+        blade = _blade(angle)
+        verts += blade
+        codes += [MplPath.MOVETO] + [MplPath.LINETO] * (len(blade) - 2) + [MplPath.CLOSEPOLY]
+
+    t = np.linspace(0, 2 * np.pi, 16, endpoint=False)
+    hub = np.column_stack([0.16 * np.cos(t), 0.16 * np.sin(t)])
+    verts += hub.tolist() + [hub[0].tolist()]
+    codes += [MplPath.MOVETO] + [MplPath.LINETO] * (len(hub) - 1) + [MplPath.CLOSEPOLY]
+
+    return MplPath(verts, codes)
+
+_WTG_MARKER = _make_wtg_marker()
+
+
 def _scatter_turbines(ax, wtg_xy, label=True):
     ax.scatter(wtg_xy[:, 0], wtg_xy[:, 1],
-               marker="^", s=100, c="white", edgecolors="black",
+               marker=_WTG_MARKER, s=400, c="white", edgecolors="black",
                linewidths=1.2, zorder=10)
     if label:
         for i, pos in enumerate(wtg_xy):
@@ -586,6 +619,21 @@ def _scatter_turbines(ax, wtg_xy, label=True):
                 textcoords="offset points", fontsize=7,
                 color="white", fontweight="bold",
                 path_effects=[mpe.withStroke(linewidth=2, foreground="black")])
+
+
+def _scatter_receptors(ax, receptor_xy, receptor_levels, receptor_names=None):
+    crit_35 = 35.0
+    crit_40 = 40.0
+    for i, (pos, lvl) in enumerate(zip(receptor_xy, receptor_levels)):
+        colour = "#e74c3c" if lvl > crit_40 else ("#f39c12" if lvl > crit_35 else "#2ecc71")
+        ax.scatter(pos[0], pos[1], marker="D", s=80, c=colour,
+                   edgecolors="black", linewidths=1.0, zorder=11)
+        name = receptor_names[i] if receptor_names else f"R{i + 1}"
+        label = f"{name}\n{lvl:.1f} dB(A)"
+        ax.annotate(
+            label, pos, xytext=(6, 4), textcoords="offset points",
+            fontsize=7, fontweight="bold", color="white",
+            path_effects=[mpe.withStroke(linewidth=2, foreground="black")])
 
 
 def _add_satellite(ax, epsg_code, bing_key=None) -> bool:
@@ -620,7 +668,10 @@ def plot_results(wtg_xy: np.ndarray,
                  use_satellite: bool = True,
                  bing_key: str = None,
                  alpha_fill: float = 0.55,
-                 save_path: str = None):
+                 save_path: str = None,
+                 receptor_xy: np.ndarray = None,
+                 receptor_levels: np.ndarray = None,
+                 receptor_names: list = None):
     """
     Four-panel figure:
       Top-left  : satellite (or terrain) + noise contours  — main planning map
@@ -628,7 +679,7 @@ def plot_results(wtg_xy: np.ndarray,
       Bot-left  : noise level vs. distance from centroid
       Bot-right : input octave-band Lw spectrum + A-weighted levels
     """
-    fig = plt.figure(figsize=(22, 16))
+    fig = plt.figure(figsize=(44, 32))
     fig.suptitle(
         f"Wind Turbine Noise Contour Analysis  ·  "
         f"Hub height {hub_height:.0f} m  ·  ISO 9613-2 simplified model",
@@ -666,15 +717,22 @@ def plot_results(wtg_xy: np.ndarray,
     _add_noise_contours(ax_sat, xx, yy, noise_grid, contour_levels,
                         alpha_fill=alpha_fill)
     _scatter_turbines(ax_sat, wtg_xy)
+
+    legend_handles = [Line2D([0], [0], marker=_WTG_MARKER, color="w",
+                             markerfacecolor="white", markeredgecolor="black",
+                             markersize=14, label="Wind turbine")]
+    if receptor_xy is not None and receptor_levels is not None:
+        _scatter_receptors(ax_sat, receptor_xy, receptor_levels, receptor_names)
+        legend_handles.append(
+            Line2D([0], [0], marker="D", color="w",
+                   markerfacecolor="yellow", markeredgecolor="black",
+                   markersize=8, label="Sensitive receptor"))
+
     ax_sat.set_title(
         "Noise Contour Map" + (" — Satellite" if sat_ok else " — Terrain"),
         fontsize=10, fontweight="bold")
     _format_map_axis(ax_sat)
-    ax_sat.legend(
-        handles=[Line2D([0], [0], marker="^", color="w",
-                        markerfacecolor="white", markeredgecolor="black",
-                        markersize=9, label="Wind turbine")],
-        loc="upper left", fontsize=8, framealpha=0.85)
+    ax_sat.legend(handles=legend_handles, loc="upper left", fontsize=8, framealpha=0.85)
 
     # Colourbar for Panel 1
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
@@ -688,6 +746,8 @@ def plot_results(wtg_xy: np.ndarray,
                       shading="auto", alpha=0.90)
     _terrain_overlay(ax_ter, xx, yy, elev_grid, alpha=0.25)
     _scatter_turbines(ax_ter, wtg_xy)
+    if receptor_xy is not None and receptor_levels is not None:
+        _scatter_receptors(ax_ter, receptor_xy, receptor_levels, receptor_names)
     ax_ter.set_title("Noise Level Heatmap — Terrain", fontsize=10, fontweight="bold")
     _format_map_axis(ax_ter)
     cb2 = fig.colorbar(sm, ax=ax_ter, shrink=0.80, pad=0.02, aspect=28)

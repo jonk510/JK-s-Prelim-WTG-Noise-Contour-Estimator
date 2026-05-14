@@ -50,6 +50,38 @@ _GE_164_6_LW_3RD = {
 # Octave-band equivalent — un-weight from Lwa before summing (GE data is A-weighted)
 _GE_164_6_LW_OCT = third_oct_to_octave(_GE_164_6_LW_3RD, a_weighted=True)
 
+# ── Load turbine presets from Excel if present ────────────────────────────────
+_SPECTRA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                              "WTG_Acoustic_Spectra_Loudest_Modes 1.xlsx")
+
+@st.cache_data
+def _load_wtg_presets():
+    """Return dict {display_name: (data_dict {freq: Lwa_dB}, is_third_oct)}."""
+    if not os.path.exists(_SPECTRA_FILE):
+        return {}
+    try:
+        xl = pd.ExcelFile(_SPECTRA_FILE)
+        presets = {}
+        for sheet in xl.sheet_names:
+            df = xl.parse(sheet)
+            freq_col = next((c for c in df.columns if "freq" in c.lower()), None)
+            lw_col   = next((c for c in df.columns if "lw"   in c.lower()), None)
+            if freq_col is None or lw_col is None:
+                continue
+            df = df.dropna(subset=[lw_col])
+            if df.empty:
+                continue
+            data = {float(r[freq_col]): float(r[lw_col]) for _, r in df.iterrows()}
+            is_third = "_1-3oct" in sheet.lower()
+            # Clean display name: drop suffix, underscores → spaces
+            name = sheet.replace("_1-3oct", "").replace("_1-1oct", "").replace("_", " ")
+            presets[name] = (data, is_third)
+        return presets
+    except Exception:
+        return {}
+
+_WTG_PRESETS = _load_wtg_presets()
+
 st.set_page_config(
     page_title="Wind Turbine Noise Analyser",
     layout="wide",
@@ -201,11 +233,38 @@ with c1:
 # Column 2 — Sound power
 with c2:
     st.subheader("2 · WTG's Sound Power Lw Curve")
-    lw_method = st.radio("Source", ["Manual entry", "Upload CSV"], horizontal=True)
+    _source_opts = ["Manual entry", "Upload CSV"]
+    if _WTG_PRESETS:
+        _source_opts.insert(0, "Turbine preset")
+    lw_method = st.radio("Source", _source_opts, horizontal=True)
     Lw_bands = {}
     lwa_display = None  # set to direct energy sum when input is already A-weighted
 
-    if lw_method == "Upload CSV":
+    if lw_method == "Turbine preset":
+        _preset_names = ["GE 164-6.0 (default)"] + list(_WTG_PRESETS.keys())
+        _selected = st.selectbox("Select turbine", _preset_names)
+        if _selected == "GE 164-6.0 (default)":
+            Lw_bands = third_oct_to_octave(_GE_164_6_LW_3RD, a_weighted=True)
+            lwa_display = 10 * np.log10(
+                sum(10 ** (v / 10) for v in _GE_164_6_LW_3RD.values() if v > 0))
+        else:
+            _data, _is_third = _WTG_PRESETS[_selected]
+            if _is_third:
+                Lw_bands = third_oct_to_octave(_data, a_weighted=True)
+                lwa_display = 10 * np.log10(
+                    sum(10 ** (v / 10) for v in _data.values() if v > 0))
+            else:
+                Lw_bands = {int(f): v - A_WEIGHTING.get(int(f), 0.0)
+                            for f, v in _data.items() if int(f) in OCTAVE_BANDS}
+                lwa_display = 10 * np.log10(
+                    sum(10 ** (v / 10) for v in _data.values() if v > 0))
+        with st.expander("Loaded spectrum"):
+            _disp = {f: round(Lw_bands[f] + A_WEIGHTING[f], 1) for f in OCTAVE_BANDS if f in Lw_bands}
+            st.dataframe(pd.DataFrame.from_dict(
+                {"Freq (Hz)": list(_disp.keys()), "Lw,A dB(A)": list(_disp.values())}),
+                hide_index=True, use_container_width=True)
+
+    elif lw_method == "Upload CSV":
         lw_file = st.file_uploader("Lw CSV (freq_hz, Lw_dB or Lwa_dB)", type=["csv"], key="lw")
         if lw_file:
             df_lw = pd.read_csv(lw_file)
@@ -235,7 +294,7 @@ with c2:
                     Lw_bands = {f: v for f, v in raw.items() if f in OCTAVE_BANDS}
                     st.info(f"Octave-band Lw loaded ({len(Lw_bands)} bands).")
             st.success("Lw loaded.")
-    else:
+    elif lw_method == "Manual entry":
         band_type = st.radio(
             "Band resolution",
             ["Octave (8 bands)", "1/3-Octave (31 bands)"],
@@ -316,6 +375,21 @@ with c3:
         st.warning("Install `contextily` to enable satellite imagery:\n"
                    "```\npip install contextily\n```")
 
+# ── Sensitive receptors ───────────────────────────────────────────────────────
+st.divider()
+st.subheader("4 · Sensitive Receptors (optional)")
+rec_file = st.file_uploader(
+    "Receptor CSV — columns: X, Y (and optionally Name)",
+    type=["csv", "txt"], key="rec")
+receptor_xy, receptor_names = None, None
+if rec_file:
+    rec_df = pd.read_csv(rec_file)
+    rec_df.columns = [c.strip().lstrip("﻿").upper() for c in rec_df.columns]
+    rec_df.dropna(subset=["X", "Y"], inplace=True)
+    receptor_xy = rec_df[["X", "Y"]].values.astype(float)
+    receptor_names = rec_df["NAME"].tolist() if "NAME" in rec_df.columns else [f"R{i+1}" for i in range(len(receptor_xy))]
+    st.success(f"{len(receptor_xy)} receptors loaded: {', '.join(receptor_names)}")
+
 # ── Run button ────────────────────────────────────────────────────────────────
 st.divider()
 ready = (wtg_xy is not None) and bool(Lw_bands)
@@ -355,12 +429,24 @@ if st.button("Run Noise Analysis", type="primary", disabled=not ready, use_conta
             xx, yy, elev_grid, hr=float(hr), G=float(G),
             use_shielding=use_shielding)
 
+        # Interpolate noise at receptor locations
+        receptor_levels = None
+        if receptor_xy is not None:
+            from scipy.interpolate import RegularGridInterpolator
+            st.write("Interpolating receptor noise levels…")
+            interp = RegularGridInterpolator(
+                (yi, xi), noise_grid, method="linear", bounds_error=False,
+                fill_value=None)
+            receptor_levels = interp(receptor_xy[:, ::-1])  # (Y, X) order
+
         st.write("Rendering figure…")
         fig = plot_results(
             wtg_xy, noise_grid, xx, yy, elev_grid,
             Lw_bands, hub_height, contour_levels, int(epsg_code),
             use_satellite=use_satellite, bing_key=bing_key,
-            alpha_fill=alpha_fill, save_path=None)
+            alpha_fill=alpha_fill, save_path=None,
+            receptor_xy=receptor_xy, receptor_levels=receptor_levels,
+            receptor_names=receptor_names)
 
         status.update(label="Analysis complete!", state="complete")
 
@@ -373,6 +459,8 @@ if st.button("Run Noise Analysis", type="primary", disabled=not ready, use_conta
         use_satellite=use_satellite, bing_key=bing_key,
         alpha_fill=alpha_fill,
         use_shielding=use_shielding,
+        receptor_xy=receptor_xy, receptor_levels=receptor_levels,
+        receptor_names=receptor_names,
     )
 
 # ── Results ───────────────────────────────────────────────────────────────────
@@ -386,7 +474,9 @@ if "results" in st.session_state:
                 r["wtg_xy"], r["noise_grid"], r["xx"], r["yy"], r["elev_grid"],
                 r["Lw_bands"], r["hub_height"], r["contour_levels"], r["epsg_code"],
                 use_satellite=r["use_satellite"], bing_key=r["bing_key"],
-                alpha_fill=alpha_fill, save_path=None)
+                alpha_fill=alpha_fill, save_path=None,
+                receptor_xy=r.get("receptor_xy"), receptor_levels=r.get("receptor_levels"),
+                receptor_names=r.get("receptor_names"))
             r["alpha_fill"] = alpha_fill
             plt.close("all")
 
@@ -396,6 +486,16 @@ if "results" in st.session_state:
     r_from_cen = np.sqrt(((grid_pts - centroid) ** 2).sum(axis=1))
 
     st.subheader("Results")
+
+    if r.get("receptor_levels") is not None:
+        st.markdown("**Sensitive Receptor Noise Levels**")
+        crit = 35.0
+        rec_rows = []
+        for name, lvl in zip(r["receptor_names"], r["receptor_levels"]):
+            status_str = "🔴 Exceeds 40" if lvl > 40 else ("🟡 35–40" if lvl > 35 else "🟢 < 35")
+            rec_rows.append({"Receptor": name, "dB(A)": round(float(lvl), 1), "SA Criterion": status_str})
+        st.dataframe(pd.DataFrame(rec_rows).set_index("Receptor"), use_container_width=True)
+
     tab_map, tab_extents, tab_decay = st.tabs(["Map", "Contour Extents", "Distance Decay"])
 
     with tab_map:
