@@ -279,7 +279,9 @@ with st.sidebar:
 
     st.divider()
     st.header("Grid")
-    resolution = st.slider("Resolution (pts/side)", 50, 500, DEFAULT_GRID_RESOLUTION, 25)
+    grid_spacing_m = st.number_input(
+        "Grid spacing (m)", value=50.0, min_value=10.0, max_value=500.0, step=10.0,
+        help="Spacing between grid points in metres. Smaller = finer detail but slower.")
     buffer_m = st.number_input(
         "Buffer beyond layout (m)", value=float(DEFAULT_GRID_BUFFER_M), min_value=500.0, step=500.0)
 
@@ -537,14 +539,16 @@ if st.button("Run Noise Analysis", type="primary", disabled=not ready, use_conta
         xmax = wtg_xy[:, 0].max() + buffer_m
         ymin = wtg_xy[:, 1].min() - buffer_m
         ymax = wtg_xy[:, 1].max() + buffer_m
-        xi = np.linspace(xmin, xmax, resolution)
-        yi = np.linspace(ymin, ymax, resolution)
+        nx = max(10, int(round((xmax - xmin) / grid_spacing_m)) + 1)
+        ny = max(10, int(round((ymax - ymin) / grid_spacing_m)) + 1)
+        xi = np.linspace(xmin, xmax, nx)
+        yi = np.linspace(ymin, ymax, ny)
         xx, yy = np.meshgrid(xi, yi)
         elev_grid = get_elev(np.column_stack([xx.ravel(), yy.ravel()])).reshape(xx.shape)
         wtg_elevs = get_elev(wtg_xy)
 
         shield_note = " + terrain shielding" if use_shielding else ""
-        st.write(f"Computing noise grid ({resolution}×{resolution} pts, {len(wtg_xy)} turbines{shield_note})…")
+        st.write(f"Computing noise grid ({nx}×{ny} pts @ {grid_spacing_m:.0f} m, {len(wtg_xy)} turbines{shield_note})…")
         noise_grid = compute_noise_grid(
             wtg_xy, wtg_elevs, Lw_bands, hub_height,
             xx, yy, elev_grid, hr=float(hr), G=float(G),
