@@ -202,7 +202,7 @@ This tool's defaults are configured to match the modelling parameters used in
 professional wind farm noise assessments under the
 *SA Wind Farm Environmental Noise Guidelines (2021)*:
 
-| Parameter | SA Guidelines / GHD practice | This tool default |
+| Parameter | SA Guidelines | This tool default |
 |---|---|---|
 | Propagation model | ISO 9613-2 (simplified method) | ✅ ISO 9613-2:1996 §7.3 Table 3 |
 | Ground factor G | **0.5** (50 % acoustically porous / mixed) | ✅ G = 0.5 |
