@@ -350,23 +350,18 @@ with c2:
     lwa_display = None  # set to direct energy sum when input is already A-weighted
 
     if lw_method == "Turbine preset":
-        _preset_names = ["GE 164-6.0 (default)"] + list(_WTG_PRESETS.keys())
+        _preset_names = list(_WTG_PRESETS.keys())
         _selected = st.selectbox("Select turbine", _preset_names)
-        if _selected == "GE 164-6.0 (default)":
-            Lw_bands = third_oct_to_octave(_GE_164_6_LW_3RD, a_weighted=True)
+        _data, _is_third = _WTG_PRESETS[_selected]
+        if _is_third:
+            Lw_bands = third_oct_to_octave(_data, a_weighted=True)
             lwa_display = 10 * np.log10(
-                sum(10 ** (v / 10) for v in _GE_164_6_LW_3RD.values() if v > 0))
+                sum(10 ** (v / 10) for v in _data.values() if v > 0))
         else:
-            _data, _is_third = _WTG_PRESETS[_selected]
-            if _is_third:
-                Lw_bands = third_oct_to_octave(_data, a_weighted=True)
-                lwa_display = 10 * np.log10(
-                    sum(10 ** (v / 10) for v in _data.values() if v > 0))
-            else:
-                Lw_bands = {int(f): v - A_WEIGHTING.get(int(f), 0.0)
-                            for f, v in _data.items() if int(f) in OCTAVE_BANDS}
-                lwa_display = 10 * np.log10(
-                    sum(10 ** (v / 10) for v in _data.values() if v > 0))
+            Lw_bands = {int(f): v - A_WEIGHTING.get(int(f), 0.0)
+                        for f, v in _data.items() if int(f) in OCTAVE_BANDS}
+            lwa_display = 10 * np.log10(
+                sum(10 ** (v / 10) for v in _data.values() if v > 0))
         with st.expander("Loaded spectrum"):
             _disp = {f: round(Lw_bands[f] + A_WEIGHTING[f], 1) for f in OCTAVE_BANDS if f in Lw_bands}
             st.dataframe(pd.DataFrame.from_dict(
@@ -625,6 +620,7 @@ if "results" in st.session_state:
     tab_map, tab_extents, tab_decay = st.tabs(["Map", "Contour Extents", "Distance Decay"])
 
     with tab_map:
+        r["fig"].set_dpi(120)
         st.pyplot(r["fig"], use_container_width=True)
         dl1, dl2 = st.columns(2)
         with dl1:

@@ -553,9 +553,9 @@ def _terrain_overlay(ax, xx, yy, elev_grid, n_levels=15, alpha=0.35):
 def _format_map_axis(ax):
     ax.set_aspect("equal", adjustable="box")
     ax.ticklabel_format(style="sci", scilimits=(0, 0), axis="both")
-    ax.set_xlabel("Easting (m)", fontsize=8)
-    ax.set_ylabel("Northing (m)", fontsize=8)
-    ax.tick_params(labelsize=7)
+    ax.set_xlabel("Easting (m)", fontsize=16)
+    ax.set_ylabel("Northing (m)", fontsize=16)
+    ax.tick_params(labelsize=14)
 
 
 def _noise_cmap_norm(levels):
@@ -573,7 +573,7 @@ def _add_noise_contours(ax, xx, yy, noise_grid, levels, alpha_fill=0.55):
                      cmap=cmap, norm=norm, alpha=alpha_fill, extend="both")
     cl = ax.contour(xx, yy, noise_grid, levels=levels,
                     colors="black", linewidths=0.8, alpha=0.9)
-    ax.clabel(cl, fmt="%g dB(A)", fontsize=8, inline=True)
+    ax.clabel(cl, fmt="%g dB(A)", fontsize=13, inline=True)
     return cf
 
 
@@ -617,7 +617,7 @@ def _scatter_turbines(ax, wtg_xy, label=True):
         for i, pos in enumerate(wtg_xy):
             ax.annotate(
                 f"T{i + 1}", pos, xytext=(5, 4),
-                textcoords="offset points", fontsize=7,
+                textcoords="offset points", fontsize=13,
                 color="white", fontweight="bold",
                 path_effects=[mpe.withStroke(linewidth=2, foreground="black")])
 
@@ -633,7 +633,7 @@ def _scatter_receptors(ax, receptor_xy, receptor_levels, receptor_names=None):
         label = f"{name}\n{lvl:.1f} dB(A)"
         ax.annotate(
             label, pos, xytext=(6, 4), textcoords="offset points",
-            fontsize=7, fontweight="bold", color="white",
+            fontsize=13, fontweight="bold", color="white",
             path_effects=[mpe.withStroke(linewidth=2, foreground="black")])
 
 
@@ -684,7 +684,7 @@ def plot_results(wtg_xy: np.ndarray,
     fig.suptitle(
         f"Wind Turbine Noise Contour Analysis  ·  "
         f"Hub height {hub_height:.0f} m  ·  ISO 9613-2 simplified model",
-        fontsize=14, fontweight="bold", y=0.99)
+        fontsize=22, fontweight="bold", y=0.99)
 
     gs = GridSpec(2, 3, figure=fig,
                   height_ratios=[3, 1], width_ratios=[1, 1, 1],
@@ -731,15 +731,16 @@ def plot_results(wtg_xy: np.ndarray,
 
     ax_sat.set_title(
         "Noise Contour Map" + (" — Satellite" if sat_ok else " — Terrain"),
-        fontsize=10, fontweight="bold")
+        fontsize=18, fontweight="bold")
     _format_map_axis(ax_sat)
-    ax_sat.legend(handles=legend_handles, loc="upper left", fontsize=8, framealpha=0.85)
+    ax_sat.legend(handles=legend_handles, loc="upper left", fontsize=14, framealpha=0.85)
 
     # Colourbar for Panel 1
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
     cb1 = fig.colorbar(sm, ax=ax_sat, shrink=0.80, pad=0.02, aspect=28)
-    cb1.set_label("A-weighted SPL  dB(A)", fontsize=8)
+    cb1.set_label("A-weighted SPL  dB(A)", fontsize=14)
+    cb1.ax.tick_params(labelsize=13)
     cb1.set_ticks(contour_levels)
 
     # ── Panel 2 : smooth noise heatmap ───────────────────────────────────────
@@ -749,10 +750,11 @@ def plot_results(wtg_xy: np.ndarray,
     _scatter_turbines(ax_ter, wtg_xy)
     if receptor_xy is not None and receptor_levels is not None:
         _scatter_receptors(ax_ter, receptor_xy, receptor_levels, receptor_names)
-    ax_ter.set_title("Noise Level Heatmap — Terrain", fontsize=10, fontweight="bold")
+    ax_ter.set_title("Noise Level Heatmap — Terrain", fontsize=12, fontweight="bold")
     _format_map_axis(ax_ter)
     cb2 = fig.colorbar(sm, ax=ax_ter, shrink=0.80, pad=0.02, aspect=28)
-    cb2.set_label("A-weighted SPL  dB(A)", fontsize=8)
+    cb2.set_label("A-weighted SPL  dB(A)", fontsize=10)
+    cb2.ax.tick_params(labelsize=9)
     cb2.set_ticks(contour_levels)
 
     # ── Panel 3 : distance-decay ──────────────────────────────────────────────
@@ -773,7 +775,7 @@ def plot_results(wtg_xy: np.ndarray,
     ax_decay.plot(bin_r, bin_max, "b-", lw=2.0, label="Max dB(A)")
     for lv in contour_levels:
         ax_decay.axhline(lv, color="grey", lw=0.7, linestyle="--", alpha=0.7)
-        ax_decay.text(r_max * 0.97, lv + 0.4, f"{lv:g}", fontsize=7,
+        ax_decay.text(r_max * 0.97, lv + 0.4, f"{lv:g}", fontsize=9,
                       ha="right", va="bottom", color="grey")
 
     # Mark approximate contour radii
@@ -783,16 +785,16 @@ def plot_results(wtg_xy: np.ndarray,
             r_lv = float(r_from_cen[mask_lv].max())
             ax_decay.axvline(r_lv, color="grey", lw=0.5, linestyle=":", alpha=0.6)
 
-    ax_decay.set_xlabel("Distance from layout centroid (m)", fontsize=9)
-    ax_decay.set_ylabel("Max A-weighted SPL  dB(A)", fontsize=9)
+    ax_decay.set_xlabel("Distance from layout centroid (m)", fontsize=11)
+    ax_decay.set_ylabel("Max A-weighted SPL  dB(A)", fontsize=11)
     ax_decay.set_title("Noise vs. Distance from Layout Centroid",
-                        fontsize=10, fontweight="bold")
+                        fontsize=12, fontweight="bold")
     ax_decay.set_xlim(0, r_max)
     y_lo = max(min(contour_levels) - 5, 15)
     y_hi = max(float(noise_flat[np.isfinite(noise_flat)].max()) + 3, 60)
     ax_decay.set_ylim(y_lo, y_hi)
     ax_decay.grid(True, alpha=0.3)
-    ax_decay.tick_params(labelsize=8)
+    ax_decay.tick_params(labelsize=10)
 
     # Contour distance table as text
     table_lines = [f"{'Level':>8}  {'Max radius':>12}"]
@@ -803,7 +805,7 @@ def plot_results(wtg_xy: np.ndarray,
         table_lines.append(f"{lv:>5g} dB(A)  {r_lv:>7.0f} m")
     ax_decay.text(
         0.98, 0.97, "\n".join(table_lines),
-        transform=ax_decay.transAxes, fontsize=7, ha="right", va="top",
+        transform=ax_decay.transAxes, fontsize=9, ha="right", va="top",
         fontfamily="monospace",
         bbox=dict(boxstyle="round,pad=0.4", facecolor="#f0f0f0",
                   edgecolor="#aaaaaa", linewidth=0.8, alpha=0.92))
@@ -823,29 +825,29 @@ def plot_results(wtg_xy: np.ndarray,
     for bar, val in zip(bars1, lw_vals):
         if val > 0:
             ax_spec.text(bar.get_x() + bar.get_width() / 2, val + 0.4,
-                          f"{val:.0f}", ha="center", va="bottom", fontsize=6.5)
+                          f"{val:.0f}", ha="center", va="bottom", fontsize=9)
     for bar, val in zip(bars2, lwa_vals):
         if val > -60:
             ax_spec.text(bar.get_x() + bar.get_width() / 2,
                           max(val, ax_spec.get_ylim()[0] if ax_spec.get_ylim()[1] else 0) + 0.4,
-                          f"{val:.0f}", ha="center", va="bottom", fontsize=6.5)
+                          f"{val:.0f}", ha="center", va="bottom", fontsize=9)
 
     lw_total  = 10.0 * np.log10(sum(10.0 ** (v / 10.0) for v in lw_vals if v > 0))
     lwa_total = overall_lwa(Lw_bands)
 
     ax_spec.set_xticks(x_pos)
-    ax_spec.set_xticklabels([f"{f}\nHz" for f in OCTAVE_BANDS], fontsize=8)
-    ax_spec.set_ylabel("Level (dB / dB(A))", fontsize=9)
-    ax_spec.set_title("Input Sound Power Spectrum", fontsize=10, fontweight="bold")
-    ax_spec.legend(fontsize=8, loc="upper right")
+    ax_spec.set_xticklabels([f"{f}\nHz" for f in OCTAVE_BANDS], fontsize=10)
+    ax_spec.set_ylabel("Level (dB / dB(A))", fontsize=11)
+    ax_spec.set_title("Input Sound Power Spectrum", fontsize=12, fontweight="bold")
+    ax_spec.legend(fontsize=10, loc="upper right")
     ax_spec.grid(axis="y", alpha=0.3)
-    ax_spec.tick_params(labelsize=8)
+    ax_spec.tick_params(labelsize=10)
 
     note = (f"Overall Lw = {lw_total:.1f} dB re 1 pW  "
             f"  |  Overall Lw,A = {lwa_total:.1f} dB(A)  "
             f"  |  Hub height = {hub_height:.0f} m  "
             f"  |  Turbines = {len(wtg_xy)}")
-    fig.text(0.5, 0.008, note, ha="center", va="bottom", fontsize=9,
+    fig.text(0.5, 0.008, note, ha="center", va="bottom", fontsize=12,
              fontweight="bold",
              bbox=dict(boxstyle="round,pad=0.4", facecolor="#fffbe6",
                        edgecolor="#c8a800", linewidth=1.2, alpha=0.92))
