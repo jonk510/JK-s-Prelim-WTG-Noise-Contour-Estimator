@@ -100,20 +100,24 @@ def _load_kmz_points(uploaded_file, target_epsg: int):
         kml_bytes = raw
 
     root = ET.fromstring(kml_bytes)
-    NS = "http://www.opengis.net/kml/2.2"
+
+    # Strip all namespace prefixes so tags become plain local names
+    for elem in root.iter():
+        if "}" in elem.tag:
+            elem.tag = elem.tag.split("}", 1)[1]
 
     lons, lats, names = [], [], []
-    for pm in root.iter(f"{{{NS}}}Placemark"):
-        pt = pm.find(f".//{{{NS}}}Point")
+    for pm in root.iter("Placemark"):
+        pt = pm.find(".//Point")
         if pt is None:
             continue
-        coords_el = pt.find(f"{{{NS}}}coordinates")
+        coords_el = pt.find("coordinates")
         if coords_el is None or not coords_el.text:
             continue
         parts = coords_el.text.strip().split(",")
         lons.append(float(parts[0]))
         lats.append(float(parts[1]))
-        name_el = pm.find(f"{{{NS}}}name")
+        name_el = pm.find("name")
         names.append(name_el.text.strip() if name_el is not None and name_el.text else f"P{len(lons)}")
 
     if not lons:
