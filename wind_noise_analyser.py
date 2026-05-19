@@ -680,21 +680,21 @@ def plot_results(wtg_xy: np.ndarray,
       Bot-left  : noise level vs. distance from centroid
       Bot-right : input octave-band Lw spectrum + A-weighted levels
     """
-    fig = plt.figure(figsize=(44, 32))
+    fig = plt.figure(figsize=(44, 36))
     fig.suptitle(
         f"Wind Turbine Noise Contour Analysis  ·  "
         f"Hub height {hub_height:.0f} m  ·  ISO 9613-2 simplified model",
-        fontsize=14, fontweight="bold", y=0.98)
+        fontsize=14, fontweight="bold", y=0.99)
 
-    gs = GridSpec(2, 2, figure=fig,
-                  height_ratios=[1.6, 1], width_ratios=[1.6, 1],
-                  hspace=0.35, wspace=0.25,
-                  left=0.05, right=0.97, top=0.93, bottom=0.06)
+    gs = GridSpec(2, 3, figure=fig,
+                  height_ratios=[3, 1], width_ratios=[1, 1, 1],
+                  hspace=0.30, wspace=0.28,
+                  left=0.04, right=0.97, top=0.96, bottom=0.05)
 
-    ax_sat   = fig.add_subplot(gs[0, 0])
-    ax_ter   = fig.add_subplot(gs[0, 1])
-    ax_decay = fig.add_subplot(gs[1, 0])
-    ax_spec  = fig.add_subplot(gs[1, 1])
+    ax_sat   = fig.add_subplot(gs[0, :])   # full-width top
+    ax_ter   = fig.add_subplot(gs[1, 0])
+    ax_decay = fig.add_subplot(gs[1, 1])
+    ax_spec  = fig.add_subplot(gs[1, 2])
 
     cmap, norm = _noise_cmap_norm(contour_levels)
     xmin, xmax = float(xx.min()), float(xx.max())
