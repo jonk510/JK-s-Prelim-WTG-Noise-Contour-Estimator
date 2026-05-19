@@ -1,10 +1,11 @@
 """
-Jonny's Prelim Wind Turbine Noise Contour Estimator — Streamlit Web App
+JK's Prelim Wind Turbine Noise Contour Estimator — Streamlit Web App
 """
 
 import io
 import os
 import sys
+import tempfile
 import warnings
 
 import matplotlib
@@ -50,6 +51,35 @@ _GE_164_6_LW_3RD = {
 # Octave-band equivalent — un-weight from Lwa before summing (GE data is A-weighted)
 _GE_164_6_LW_OCT = third_oct_to_octave(_GE_164_6_LW_3RD, a_weighted=True)
 
+# ── Shapefile loader ──────────────────────────────────────────────────────────
+def _load_shapefile_points(uploaded_files, target_epsg: int):
+    """Write uploaded shapefile parts to a temp dir, read with geopandas, return (xy, names)."""
+    try:
+        import geopandas as gpd
+    except ImportError:
+        st.error("Install `geopandas` to use shapefile upload.")
+        return None, None
+    with tempfile.TemporaryDirectory() as tmp:
+        for f in uploaded_files:
+            with open(os.path.join(tmp, f.name), "wb") as fh:
+                fh.write(f.read())
+        shp_files = [p for p in os.listdir(tmp) if p.endswith(".shp")]
+        if not shp_files:
+            st.error("No .shp file found in the uploaded set.")
+            return None, None
+        gdf = gpd.read_file(os.path.join(tmp, shp_files[0]))
+    gdf = gdf[gdf.geometry.notnull()]
+    gdf = gdf[gdf.geometry.geom_type.isin(["Point", "MultiPoint"])]
+    if gdf.empty:
+        st.error("Shapefile contains no point features.")
+        return None, None
+    gdf = gdf.to_crs(epsg=target_epsg)
+    xy = np.column_stack([gdf.geometry.x, gdf.geometry.y])
+    name_col = next((c for c in gdf.columns if c.lower() in ("name", "label", "id", "receptor")), None)
+    names = gdf[name_col].astype(str).tolist() if name_col else [f"R{i+1}" for i in range(len(xy))]
+    return xy, names
+
+
 # ── Load turbine presets from Excel if present ────────────────────────────────
 _SPECTRA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               "WTG_Acoustic_Spectra_Loudest_Modes 1.xlsx")
@@ -72,7 +102,8 @@ def _load_wtg_presets():
             if df.empty:
                 continue
             data = {float(r[freq_col]): float(r[lw_col]) for _, r in df.iterrows()}
-            is_third = "_1-3oct" in sheet.lower()
+            _OCTAVE_SET = {63.0, 125.0, 250.0, 500.0, 1000.0, 2000.0, 4000.0, 8000.0}
+            is_third = any(f not in _OCTAVE_SET for f in data.keys())
             # Clean display name: drop suffix, underscores → spaces
             name = sheet.replace("_1-3oct", "").replace("_1-1oct", "").replace("_", " ")
             presets[name] = (data, is_third)
@@ -87,7 +118,7 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Jonny's Prelim Wind Turbine Noise Contour Estimator")
+st.title("JK's Prelim Wind Turbine Noise Contour Estimator")
 st.caption("ISO 9613-2 simplified propagation model")
 
 with st.expander("About this tool — methodology, assumptions & standards"):
@@ -224,17 +255,31 @@ c1, c2, c3 = st.columns(3)
 # Column 1 — WTG layout
 with c1:
     st.subheader("1 · Turbine Layout")
-    wtg_file = st.file_uploader("WTG layout CSV (X, Y columns)", type=["csv", "txt"])
+    wtg_fmt = st.radio("Format", ["CSV", "Shapefile"], horizontal=True, key="wtg_fmt")
     wtg_xy = None
-    if wtg_file:
-        wtg_df = pd.read_csv(wtg_file)
-        wtg_df.columns = [c.strip().lstrip("﻿").upper() for c in wtg_df.columns]
-        wtg_df.dropna(subset=["X", "Y"], inplace=True)
-        wtg_xy = wtg_df[["X", "Y"]].values.astype(float)
-        st.success(f"{len(wtg_xy)} turbines loaded")
-        display_df = wtg_df[["X", "Y"]].copy()
-        display_df.index = range(1, len(display_df) + 1)
-        st.dataframe(display_df, use_container_width=True)
+    if wtg_fmt == "CSV":
+        wtg_file = st.file_uploader("CSV with X, Y columns", type=["csv", "txt"], key="wtg_csv")
+        if wtg_file:
+            wtg_df = pd.read_csv(wtg_file)
+            wtg_df.columns = [c.strip().lstrip("﻿").upper() for c in wtg_df.columns]
+            wtg_df.dropna(subset=["X", "Y"], inplace=True)
+            wtg_xy = wtg_df[["X", "Y"]].values.astype(float)
+            st.success(f"{len(wtg_xy)} turbines loaded")
+            display_df = wtg_df[["X", "Y"]].copy()
+            display_df.index = range(1, len(display_df) + 1)
+            st.dataframe(display_df, use_container_width=True)
+    else:
+        wtg_shp = st.file_uploader(
+            "Shapefile parts (.shp, .shx, .dbf, .prj)",
+            type=["shp", "shx", "dbf", "prj", "cpg", "qmd"],
+            accept_multiple_files=True, key="wtg_shp")
+        if wtg_shp:
+            wtg_xy, _ = _load_shapefile_points(wtg_shp, int(epsg_code))
+            if wtg_xy is not None:
+                st.success(f"{len(wtg_xy)} turbines loaded")
+                display_df = pd.DataFrame(wtg_xy, columns=["X", "Y"])
+                display_df.index = range(1, len(display_df) + 1)
+                st.dataframe(display_df, use_container_width=True)
 
 # Column 2 — Sound power
 with c2:
@@ -384,17 +429,28 @@ with c3:
 # ── Sensitive receptors ───────────────────────────────────────────────────────
 st.divider()
 st.subheader("4 · Sensitive Receptors (optional)")
-rec_file = st.file_uploader(
-    "Receptor CSV — columns: X, Y (and optionally Name)",
-    type=["csv", "txt"], key="rec")
+rec_fmt = st.radio("Format", ["CSV", "Shapefile"], horizontal=True, key="rec_fmt")
 receptor_xy, receptor_names = None, None
-if rec_file:
-    rec_df = pd.read_csv(rec_file)
-    rec_df.columns = [c.strip().lstrip("﻿").upper() for c in rec_df.columns]
-    rec_df.dropna(subset=["X", "Y"], inplace=True)
-    receptor_xy = rec_df[["X", "Y"]].values.astype(float)
-    receptor_names = rec_df["NAME"].tolist() if "NAME" in rec_df.columns else [f"R{i+1}" for i in range(len(receptor_xy))]
-    st.success(f"{len(receptor_xy)} receptors loaded: {', '.join(receptor_names)}")
+if rec_fmt == "CSV":
+    rec_file = st.file_uploader(
+        "CSV — columns: X, Y (and optionally Name)",
+        type=["csv", "txt"], key="rec_csv")
+    if rec_file:
+        rec_df = pd.read_csv(rec_file)
+        rec_df.columns = [c.strip().lstrip("﻿").upper() for c in rec_df.columns]
+        rec_df.dropna(subset=["X", "Y"], inplace=True)
+        receptor_xy = rec_df[["X", "Y"]].values.astype(float)
+        receptor_names = rec_df["NAME"].tolist() if "NAME" in rec_df.columns else [f"R{i+1}" for i in range(len(receptor_xy))]
+        st.success(f"{len(receptor_xy)} receptors loaded: {', '.join(receptor_names)}")
+else:
+    rec_shp = st.file_uploader(
+        "Shapefile parts (.shp, .shx, .dbf, .prj)",
+        type=["shp", "shx", "dbf", "prj", "cpg", "qmd"],
+        accept_multiple_files=True, key="rec_shp")
+    if rec_shp:
+        receptor_xy, receptor_names = _load_shapefile_points(rec_shp, int(epsg_code))
+        if receptor_xy is not None:
+            st.success(f"{len(receptor_xy)} receptors loaded: {', '.join(receptor_names)}")
 
 # ── Run button ────────────────────────────────────────────────────────────────
 st.divider()
