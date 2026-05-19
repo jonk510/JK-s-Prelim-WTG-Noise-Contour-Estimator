@@ -269,7 +269,7 @@ with st.sidebar:
              "barrier attenuation (capped at 20 dB). More realistic results "
              "but slightly longer computation.")
     epsg_code = st.number_input(
-        "EPSG code", value=int(DEFAULT_EPSG), min_value=1000, max_value=99999, step=1)
+        "Coordinate System's EPSG code", value=int(DEFAULT_EPSG), min_value=1000, max_value=99999, step=1)
     try:
         from pyproj import CRS
         _crs_name = CRS.from_epsg(int(epsg_code)).name
