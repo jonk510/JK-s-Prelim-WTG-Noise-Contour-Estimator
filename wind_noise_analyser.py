@@ -128,8 +128,9 @@ ALPHA_ATM = {
 # 1/3-octave → parent octave band
 # Note: int(12.5)=12 and int(31.5)=31, so float inputs from spreadsheets resolve correctly
 THIRD_OCT_TO_OCT = {
-    # Bands below ~44.5 Hz are outside ISO 9613-2's frequency range (63–8000 Hz octave bands)
-    # and are NOT mapped. The 63 Hz octave covers ~44.5–89.1 Hz → only 50, 63, 80 Hz.
+    # Sub-44.5 Hz bands are below ISO 9613-2's range; rolled into the 63 Hz octave.
+    # int() handles both 31.5 Hz (→31) and 32 Hz nominal variants.
+    10: 63,  12: 63,  16: 63,  20: 63,  25: 63,  31: 63,  32: 63,  40: 63,
      50: 63,   63: 63,   80: 63,
     100: 125,  125: 125, 160: 125,
     200: 250,  250: 250, 315: 250,
@@ -143,7 +144,7 @@ THIRD_OCT_TO_OCT = {
 # A-weighting corrections (dB) at 1/3-octave centre frequencies (IEC 61672-1)
 # Integer keys match int(freq) convention used in THIRD_OCT_TO_OCT (12→12.5 Hz, 31→31.5 Hz)
 A_WEIGHTING_THIRD_OCT = {
-    10: -70.4, 12: -63.4, 16: -56.7, 20: -50.5, 25: -44.7, 31: -39.4, 40: -34.6,
+    10: -70.4, 12: -63.4, 16: -56.7, 20: -50.5, 25: -44.7, 31: -39.4, 32: -39.1, 40: -34.6,
     50: -30.2,  63: -26.2,  80: -22.5, 100: -19.1, 125: -16.1, 160: -13.4,
     200: -10.9, 250:  -8.6, 315:  -6.6, 400:  -4.8, 500:  -3.2, 630:  -1.9,
     800:  -0.8, 1000:  0.0, 1250:  0.6, 1600:   1.0, 2000:  1.2, 2500:  1.3,
