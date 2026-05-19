@@ -80,6 +80,51 @@ def _load_shapefile_points(uploaded_files, target_epsg: int):
     return xy, names
 
 
+# ── KMZ / KML loader ─────────────────────────────────────────────────────────
+def _load_kmz_points(uploaded_file, target_epsg: int):
+    """Parse a KMZ or KML file and return (xy, names) reprojected to target_epsg."""
+    import zipfile
+    import xml.etree.ElementTree as ET
+    from pyproj import Transformer
+
+    raw = uploaded_file.read()
+    # KMZ = zip archive containing a .kml file; KML = plain XML
+    if zipfile.is_zipfile(io.BytesIO(raw)):
+        with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            kml_names = [n for n in z.namelist() if n.lower().endswith(".kml")]
+            if not kml_names:
+                st.error("No KML found inside KMZ.")
+                return None, None
+            kml_bytes = z.read(kml_names[0])
+    else:
+        kml_bytes = raw
+
+    root = ET.fromstring(kml_bytes)
+    NS = "http://www.opengis.net/kml/2.2"
+
+    lons, lats, names = [], [], []
+    for pm in root.iter(f"{{{NS}}}Placemark"):
+        pt = pm.find(f".//{{{NS}}}Point")
+        if pt is None:
+            continue
+        coords_el = pt.find(f"{{{NS}}}coordinates")
+        if coords_el is None or not coords_el.text:
+            continue
+        parts = coords_el.text.strip().split(",")
+        lons.append(float(parts[0]))
+        lats.append(float(parts[1]))
+        name_el = pm.find(f"{{{NS}}}name")
+        names.append(name_el.text.strip() if name_el is not None and name_el.text else f"P{len(lons)}")
+
+    if not lons:
+        st.error("No point features found in KMZ/KML.")
+        return None, None
+
+    transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{target_epsg}", always_xy=True)
+    xs, ys = transformer.transform(lons, lats)
+    return np.column_stack([xs, ys]), names
+
+
 # ── Load turbine presets from Excel if present ────────────────────────────────
 _SPECTRA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                               "WTG_Acoustic_Spectra_Loudest_Modes 1.xlsx")
@@ -255,7 +300,7 @@ c1, c2, c3 = st.columns(3)
 # Column 1 — WTG layout
 with c1:
     st.subheader("1 · Turbine Layout")
-    wtg_fmt = st.radio("Format", ["CSV", "Shapefile"], horizontal=True, key="wtg_fmt")
+    wtg_fmt = st.radio("Format", ["CSV", "Shapefile", "KMZ / KML"], horizontal=True, key="wtg_fmt")
     wtg_xy = None
     if wtg_fmt == "CSV":
         wtg_file = st.file_uploader("CSV with X, Y columns", type=["csv", "txt"], key="wtg_csv")
@@ -268,13 +313,22 @@ with c1:
             display_df = wtg_df[["X", "Y"]].copy()
             display_df.index = range(1, len(display_df) + 1)
             st.dataframe(display_df, use_container_width=True)
-    else:
+    elif wtg_fmt == "Shapefile":
         wtg_shp = st.file_uploader(
             "Shapefile parts (.shp, .shx, .dbf, .prj)",
             type=["shp", "shx", "dbf", "prj", "cpg", "qmd"],
             accept_multiple_files=True, key="wtg_shp")
         if wtg_shp:
             wtg_xy, _ = _load_shapefile_points(wtg_shp, int(epsg_code))
+            if wtg_xy is not None:
+                st.success(f"{len(wtg_xy)} turbines loaded")
+                display_df = pd.DataFrame(wtg_xy, columns=["X", "Y"])
+                display_df.index = range(1, len(display_df) + 1)
+                st.dataframe(display_df, use_container_width=True)
+    else:
+        wtg_kmz = st.file_uploader("KMZ or KML file", type=["kmz", "kml"], key="wtg_kmz")
+        if wtg_kmz:
+            wtg_xy, _ = _load_kmz_points(wtg_kmz, int(epsg_code))
             if wtg_xy is not None:
                 st.success(f"{len(wtg_xy)} turbines loaded")
                 display_df = pd.DataFrame(wtg_xy, columns=["X", "Y"])
@@ -429,7 +483,7 @@ with c3:
 # ── Sensitive receptors ───────────────────────────────────────────────────────
 st.divider()
 st.subheader("4 · Sensitive Receptors (optional)")
-rec_fmt = st.radio("Format", ["CSV", "Shapefile"], horizontal=True, key="rec_fmt")
+rec_fmt = st.radio("Format", ["CSV", "Shapefile", "KMZ / KML"], horizontal=True, key="rec_fmt")
 receptor_xy, receptor_names = None, None
 if rec_fmt == "CSV":
     rec_file = st.file_uploader(
@@ -442,13 +496,19 @@ if rec_fmt == "CSV":
         receptor_xy = rec_df[["X", "Y"]].values.astype(float)
         receptor_names = rec_df["NAME"].tolist() if "NAME" in rec_df.columns else [f"R{i+1}" for i in range(len(receptor_xy))]
         st.success(f"{len(receptor_xy)} receptors loaded: {', '.join(receptor_names)}")
-else:
+elif rec_fmt == "Shapefile":
     rec_shp = st.file_uploader(
         "Shapefile parts (.shp, .shx, .dbf, .prj)",
         type=["shp", "shx", "dbf", "prj", "cpg", "qmd"],
         accept_multiple_files=True, key="rec_shp")
     if rec_shp:
         receptor_xy, receptor_names = _load_shapefile_points(rec_shp, int(epsg_code))
+        if receptor_xy is not None:
+            st.success(f"{len(receptor_xy)} receptors loaded: {', '.join(receptor_names)}")
+else:
+    rec_kmz = st.file_uploader("KMZ or KML file", type=["kmz", "kml"], key="rec_kmz")
+    if rec_kmz:
+        receptor_xy, receptor_names = _load_kmz_points(rec_kmz, int(epsg_code))
         if receptor_xy is not None:
             st.success(f"{len(receptor_xy)} receptors loaded: {', '.join(receptor_names)}")
 
