@@ -61,13 +61,9 @@ from shared.geo_loaders import load_shapefile_points as _load_shapefile_points
 from shared.geo_loaders import load_kmz_points as _load_kmz_points
 
 
-# ── Load turbine presets from Excel if present ────────────────────────────────
-_SPECTRA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                              "WTG_Acoustic_Spectra_Loudest_Modes 1.xlsx")
-
 from shared.wtg_presets import load_wtg_presets as _load_wtg_presets
 
-_WTG_PRESETS = _load_wtg_presets(_SPECTRA_FILE)
+_WTG_PRESETS = _load_wtg_presets()
 
 st.set_page_config(
     page_title="Wind Turbine Noise Analyser",
