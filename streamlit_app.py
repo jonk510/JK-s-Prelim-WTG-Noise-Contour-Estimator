@@ -25,7 +25,7 @@ from wind_noise_analyser import (
     DEFAULT_EPSG, DEFAULT_GRID_RESOLUTION, DEFAULT_GRID_BUFFER_M,
     DEFAULT_CONTOUR_LEVELS,
     third_oct_to_octave, overall_lwa, compute_noise_grid,
-    fetch_srtm_elevation, _build_elev_interp, plot_results,
+    _build_elev_interp, plot_results,
     _HAS_PYPROJ,
 )
 
@@ -59,8 +59,7 @@ except ModuleNotFoundError:
     _sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 from shared.geo_loaders import load_shapefile_points as _load_shapefile_points
 from shared.geo_loaders import load_kmz_points as _load_kmz_points
-
-
+from shared.srtm import fetch_srtm_elevation
 from shared.wtg_presets import load_wtg_presets as _load_wtg_presets
 
 _WTG_PRESETS = _load_wtg_presets()
